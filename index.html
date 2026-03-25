@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PolyLine Vector Editor</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <h1>PolyLine Vector Editor</h1>
+    <div id="container">
+        <canvas id="polylineCanvas" width="800" height="600"></canvas>
+        <div id="buttons">
+            <button id="beginBtn" onclick="beginDrawing()">Begin (b)</button>
+            <button id="deleteBtn" onclick="deleteVertex()">Delete (d)</button>
+            <button id="moveBtn" onclick="moveVertex()">Move (m)</button>
+            <button id="refreshBtn" onclick="refreshCanvas()">Refresh (r)</button>
+            <button id="quitBtn" onclick="quitApp()">Quit (q)</button>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+
+</html>

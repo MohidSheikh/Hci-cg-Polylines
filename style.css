@@ -1,0 +1,52 @@
+body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+}
+
+#container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+canvas {
+    border: 1px solid black;
+    background-color: #f9f9f9;
+}
+
+#buttons {
+    display: flex;
+    flex-direction: column;
+    margin-left: 20px;
+}
+
+button {
+    padding: 10px;
+    margin: 5px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+button {
+    padding: 10px;
+    margin: 5px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+
+/* Style for active buttons */
+
+button.active {
+    background-color: #4CAF50;
+    /* Green color for active button */
+    color: white;
+    /* White text */
+    border: 2px solid #3e8e41;
+    /* Darker green border for emphasis */
+}
+
+button:hover {
+    background-color: #ddd;
+    /* Light gray background on hover */
+}
