@@ -1,154 +1,236 @@
 const canvas = document.getElementById('polylineCanvas');
 const ctx = canvas.getContext('2d');
 
-let polylines = []; // Stores all the polylines
-let currentPolyline = []; // Active polyline being drawn
-let currentAction = ''; // Keeps track of the current action (drawing, moving, etc.)
-let movingVertexIndex = null; // Store index of vertex being moved
-let offsetX = 0; // Offset for dragging
-let offsetY = 0; // Offset for dragging
+let polylines = [];
+let currentPolyline = null;
+let currentAction = '';
+let movingVertexIndex = null;
+let mousePos = { x: 0, y: 0 };
+let offsetX = 0;
+let offsetY = 0;
 
-// Event listener for mouse down (to start the drag)
+// ----------------- MOUSE EVENTS -----------------
+
 canvas.addEventListener('mousedown', function(event) {
     const x = event.offsetX;
     const y = event.offsetY;
 
-    // Start moving the vertex if the Move action is active
     if (currentAction === 'moving') {
-        const nearestPoint = findNearestPoint(x, y);
-        if (nearestPoint) {
-            movingVertexIndex = nearestPoint.index;
+        const nearest = findNearestPointGlobal(x, y);
+        if (nearest) {
+            currentPolyline = polylines[nearest.polylineIndex];
+            movingVertexIndex = nearest.vertexIndex;
             offsetX = x - currentPolyline[movingVertexIndex].x;
             offsetY = y - currentPolyline[movingVertexIndex].y;
-            // No need to continuously draw when moving vertices
         }
     } else if (currentAction === 'drawing') {
-        // Add points to the current polyline if drawing
-        currentPolyline.push({ x, y });
+        // Ensure we have a working array
+        if (!currentPolyline) {
+            currentPolyline = [];
+            polylines.push(currentPolyline);
+        }
+
+        const snapTarget = findNearestPointInLine(currentPolyline, x, y);
+
+        // Check for Snap to Close (to the 1st point)
+        if (snapTarget && snapTarget.index === 0 && currentPolyline.length > 2) {
+            const targetPoint = currentPolyline[snapTarget.index];
+            currentPolyline.push({ x: targetPoint.x, y: targetPoint.y });
+
+            // --- THE KEY CHANGE ---
+            // We do NOT stop the 'drawing' action.
+            // We just clear currentPolyline so the NEXT click starts a brand new shape.
+            currentPolyline = null;
+        } else {
+            currentPolyline.push({ x, y });
+        }
         redraw();
     }
 });
 
-// Event listener for mouse move (to drag the vertex)
 canvas.addEventListener('mousemove', function(event) {
-    if (movingVertexIndex !== null) {
-        const x = event.offsetX - offsetX;
-        const y = event.offsetY - offsetY;
+    mousePos.x = event.offsetX;
+    mousePos.y = event.offsetY;
 
-        // Update the position of the moving vertex
-        currentPolyline[movingVertexIndex] = { x, y };
-        redraw(); // Redraw the canvas after moving the vertex
+    if (movingVertexIndex !== null && currentPolyline) {
+        currentPolyline[movingVertexIndex] = {
+            x: mousePos.x - offsetX,
+            y: mousePos.y - offsetY
+        };
     }
+    redraw();
 });
 
-// Event listener for mouse release (to stop moving)
-canvas.addEventListener('mouseup', function() {
-    if (movingVertexIndex !== null) {
-        movingVertexIndex = null; // Stop moving the vertex
-    }
-});
+canvas.addEventListener('mouseup', () => { movingVertexIndex = null; });
 
-// Function to redraw the entire canvas
+// ----------------- REDRAW FUNCTION -----------------
+
 function redraw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw all polylines
     polylines.forEach(polyline => {
-        ctx.beginPath();
-        ctx.moveTo(polyline[0].x, polyline[0].y);
-        polyline.forEach(point => {
-            ctx.lineTo(point.x, point.y);
-        });
-        ctx.stroke();
+        if (polyline.length > 0) {
+            ctx.beginPath();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#333';
+            ctx.moveTo(polyline[0].x, polyline[0].y);
+            polyline.forEach(point => ctx.lineTo(point.x, point.y));
+
+            // Check if closed
+            const isClosed = polyline.length > 2 &&
+                polyline[0].x === polyline[polyline.length - 1].x &&
+                polyline[0].y === polyline[polyline.length - 1].y;
+
+            if (isClosed) {
+                ctx.fillStyle = "rgba(0, 122, 255, 0.2)";
+                ctx.fill();
+            }
+            ctx.stroke();
+
+            // Vertices
+            polyline.forEach((point, index) => {
+                ctx.beginPath();
+                ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
+                ctx.fillStyle = (currentPolyline === polyline && index === movingVertexIndex) ? 'red' : 'blue';
+                ctx.fill();
+                ctx.strokeStyle = 'white';
+                ctx.stroke();
+            });
+        }
     });
 
-    // Draw the current polyline being created
-    if (currentPolyline.length > 1) {
+    // Ghost Line - only if we are currently drawing a specific line
+    if (currentAction === 'drawing' && currentPolyline && currentPolyline.length > 0) {
+        const lastPoint = currentPolyline[currentPolyline.length - 1];
         ctx.beginPath();
-        ctx.moveTo(currentPolyline[0].x, currentPolyline[0].y);
-        currentPolyline.forEach(point => {
-            ctx.lineTo(point.x, point.y);
-        });
+        ctx.setLineDash([5, 5]);
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
+        ctx.moveTo(lastPoint.x, lastPoint.y);
+        ctx.lineTo(mousePos.x, mousePos.y);
         ctx.stroke();
+        ctx.setLineDash([]);
     }
 }
 
-// Action Handlers (Button-Triggered and Keyboard-Triggered)
+// ----------------- ACTION FUNCTIONS -----------------
+
 function beginDrawing() {
     currentAction = 'drawing';
-    currentPolyline = [];
-    polylines.push(currentPolyline);
-    setActiveButton('beginBtn'); // Set the 'Begin' button as active
+    currentPolyline = null;
+    setActiveButton('beginBtn');
 }
 
 function deleteVertex() {
-    if (currentPolyline.length > 0) {
-        currentPolyline.pop(); // Remove the last vertex from the current polyline
+    // Note: This deletes from the most recently worked-on polyline
+    let target = currentPolyline || polylines[polylines.length - 1];
+    if (target && target.length > 0) {
+        target.pop();
+        if (target.length === 0) {
+            polylines = polylines.filter(p => p !== target);
+        }
         redraw();
     }
-    setActiveButton('deleteBtn'); // Set the 'Delete' button as active
 }
 
 function moveVertex() {
-    currentAction = 'moving'; // Set action to 'moving'
-    setActiveButton('moveBtn'); // Set the 'Move' button as active
+    currentAction = 'moving';
+    setActiveButton('moveBtn');
 }
 
 function refreshCanvas() {
-    redraw();
-    setActiveButton('refreshBtn'); // Set the 'Refresh' button as active
+    polylines = [];
+    currentPolyline = null;
+    currentAction = '';
+    movingVertexIndex = null;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setActiveButton('refreshBtn');
 }
 
 function quitApp() {
-    if (confirm('Are you sure you want to quit?')) {
-        window.close(); // Close the window
-    }
-    setActiveButton('quitBtn'); // Set the 'Quit' button as active
+    if (confirm('Are you sure you want to quit?')) window.close();
 }
 
-// Function to find the nearest point to the mouse click
-function findNearestPoint(x, y) {
-    let nearestPoint = null;
-    let minDistance = 10; // Threshold distance to consider a point "near"
-    polylines.forEach((polyline, polylineIndex) => {
-        polyline.forEach((point, index) => {
-            const distance = Math.sqrt(Math.pow(x - point.x, 2) + Math.pow(y - point.y, 2));
-            if (distance < minDistance) {
-                nearestPoint = { polylineIndex, index };
+// ----------------- HELPERS -----------------
+
+function findNearestPointGlobal(x, y) {
+    let minDistance = 15;
+    let result = null;
+    polylines.forEach((polyline, pIdx) => {
+        polyline.forEach((point, vIdx) => {
+            const dist = Math.hypot(x - point.x, y - point.y);
+            if (dist < minDistance) {
+                minDistance = dist;
+                result = { polylineIndex: pIdx, vertexIndex: vIdx };
             }
         });
     });
-    return nearestPoint;
+    return result;
 }
 
-// Function to toggle the active class on buttons
-function setActiveButton(buttonId) {
-    const buttons = document.querySelectorAll('button');
-    buttons.forEach(button => {
-        button.classList.remove('active'); // Remove 'active' class from all buttons
+function findNearestPointInLine(polyline, x, y) {
+    let minDistance = 15;
+    let result = null;
+    polyline.forEach((point, index) => {
+        const dist = Math.hypot(x - point.x, y - point.y);
+        if (dist < minDistance) {
+            minDistance = dist;
+            result = { index };
+        }
     });
-    document.getElementById(buttonId).classList.add('active'); // Add 'active' class to the clicked button
+    return result;
 }
 
-// Keyboard events for the PolyLine actions
+function setActiveButton(id) {
+    document.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
+    const activeBtn = document.getElementById(id);
+    if (activeBtn) activeBtn.classList.add('active');
+}
+
+// ----------------- BINDINGS -----------------
+
+document.getElementById('refreshBtn').onclick = refreshCanvas;
+document.getElementById('beginBtn').onclick = beginDrawing;
+document.getElementById('moveBtn').onclick = moveVertex;
+document.getElementById('deleteBtn').onclick = deleteVertex;
+document.getElementById('quitBtn').onclick = quitApp;
+
+// ----------------- KEYBOARD SHORTCUTS -----------------
 window.addEventListener('keydown', function(event) {
     switch (event.key) {
         case 'b':
-            beginDrawing(); // Start a new polyline
-            break;
-        case 'r':
-            refreshCanvas(); // Refresh the canvas
+        case 'B':
+            beginDrawing();
             break;
         case 'd':
-            deleteVertex(); // Delete the last vertex
+        case 'D':
+            deleteVertex();
             break;
         case 'm':
-            moveVertex(); // Move the nearest vertex
+        case 'M':
+            moveVertex();
+            break;
+        case 'r':
+        case 'R':
+            refreshCanvas();
             break;
         case 'q':
-            quitApp(); // Quit the app
+        case 'Q':
+            quitApp();
             break;
-        default:
+
+            // --- THE ESCAPE KEY FIX ---
+        case 'Escape':
+            if (currentAction === 'drawing' && currentPolyline) {
+                // 1. Stop tracking the 'active' line so the ghost line disappears
+                // But do NOT remove it from the 'polylines' array.
+                currentPolyline = null;
+
+                // 2. Redraw to instantly remove the predictor line
+                redraw();
+
+                // Note: currentAction remains 'drawing' so the Begin button stays active.
+                // Your next click will start a brand new, separate line.
+            }
             break;
     }
 });
