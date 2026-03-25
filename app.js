@@ -24,7 +24,6 @@ canvas.addEventListener('mousedown', function(event) {
             offsetY = y - currentPolyline[movingVertexIndex].y;
         }
     } else if (currentAction === 'drawing') {
-        // Ensure we have a working array
         if (!currentPolyline) {
             currentPolyline = [];
             polylines.push(currentPolyline);
@@ -32,19 +31,16 @@ canvas.addEventListener('mousedown', function(event) {
 
         const snapTarget = findNearestPointInLine(currentPolyline, x, y);
 
-        // Check for Snap to Close (to the 1st point)
         if (snapTarget && snapTarget.index === 0 && currentPolyline.length > 2) {
             const targetPoint = currentPolyline[snapTarget.index];
             currentPolyline.push({ x: targetPoint.x, y: targetPoint.y });
-
-            // --- THE KEY CHANGE ---
-            // We do NOT stop the 'drawing' action.
-            // We just clear currentPolyline so the NEXT click starts a brand new shape.
             currentPolyline = null;
         } else {
             currentPolyline.push({ x, y });
         }
+
         redraw();
+        updateCounters();
     }
 });
 
@@ -57,6 +53,7 @@ canvas.addEventListener('mousemove', function(event) {
             x: mousePos.x - offsetX,
             y: mousePos.y - offsetY
         };
+        updateCounters();
     }
     redraw();
 });
@@ -87,11 +84,17 @@ function redraw() {
             }
             ctx.stroke();
 
-            // Vertices
             polyline.forEach((point, index) => {
                 ctx.beginPath();
-                ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
-                ctx.fillStyle = (currentPolyline === polyline && index === movingVertexIndex) ? 'red' : 'blue';
+                const isLast = index === polyline.length - 1;
+                ctx.arc(point.x, point.y, isLast ? 7 : 5, 0, Math.PI * 2);
+                if (currentPolyline === polyline && index === movingVertexIndex) {
+                    ctx.fillStyle = 'red';
+                } else if (isLast) {
+                    ctx.fillStyle = 'green';
+                } else {
+                    ctx.fillStyle = 'blue';
+                }
                 ctx.fill();
                 ctx.strokeStyle = 'white';
                 ctx.stroke();
@@ -99,12 +102,11 @@ function redraw() {
         }
     });
 
-    // Ghost Line - only if we are currently drawing a specific line
     if (currentAction === 'drawing' && currentPolyline && currentPolyline.length > 0) {
         const lastPoint = currentPolyline[currentPolyline.length - 1];
         ctx.beginPath();
         ctx.setLineDash([5, 5]);
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
+        ctx.strokeStyle = 'rgba(0,0,0,0.4)';
         ctx.moveTo(lastPoint.x, lastPoint.y);
         ctx.lineTo(mousePos.x, mousePos.y);
         ctx.stroke();
@@ -116,19 +118,36 @@ function redraw() {
 
 function beginDrawing() {
     currentAction = 'drawing';
-    currentPolyline = null;
+    let previousLastPoint = null;
+
+    if (polylines.length > 0) {
+        const lastPolyline = polylines[polylines.length - 1];
+        if (lastPolyline.length > 0) {
+            previousLastPoint = lastPolyline[lastPolyline.length - 1];
+        }
+    }
+
+    currentPolyline = [];
+    polylines.push(currentPolyline);
+
+    if (previousLastPoint) {
+        currentPolyline.push({ x: previousLastPoint.x, y: previousLastPoint.y });
+    }
+
     setActiveButton('beginBtn');
+    updateCounters();
 }
 
 function deleteVertex() {
-    // Note: This deletes from the most recently worked-on polyline
     let target = currentPolyline || polylines[polylines.length - 1];
     if (target && target.length > 0) {
         target.pop();
         if (target.length === 0) {
             polylines = polylines.filter(p => p !== target);
+            if (currentPolyline === target) currentPolyline = null;
         }
         redraw();
+        updateCounters();
     }
 }
 
@@ -144,6 +163,7 @@ function refreshCanvas() {
     movingVertexIndex = null;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     setActiveButton('refreshBtn');
+    updateCounters();
 }
 
 function quitApp() {
@@ -213,23 +233,19 @@ window.addEventListener('keydown', function(event) {
         case 'R':
             refreshCanvas();
             break;
+        case 's':
+        case 'S':
+            saveAsSVG();
+            break;
         case 'q':
         case 'Q':
             quitApp();
             break;
-
-            // --- THE ESCAPE KEY FIX ---
         case 'Escape':
             if (currentAction === 'drawing' && currentPolyline) {
-                // 1. Stop tracking the 'active' line so the ghost line disappears
-                // But do NOT remove it from the 'polylines' array.
                 currentPolyline = null;
-
-                // 2. Redraw to instantly remove the predictor line
                 redraw();
-
-                // Note: currentAction remains 'drawing' so the Begin button stays active.
-                // Your next click will start a brand new, separate line.
+                updateCounters();
             }
             break;
     }
